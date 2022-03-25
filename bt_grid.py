@@ -260,7 +260,7 @@ class StaticGridBT:
         # wealth
         axs[2].plot(self.wealth)
         axs[2].legend(["wealth"])
-        axs[2].set_title("wealth")
+        axs[2].set_title(f"wealth, r={self.r}, n_grid={self.n_grid}")
         axs[2].grid(True)
 
         plt.savefig("results.png")
