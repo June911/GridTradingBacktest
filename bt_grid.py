@@ -246,12 +246,6 @@ class StaticGridBT:
                 print(f"last quantity_on_one_grid: {self.quantity_on_one_grid}")
                 self.update_grids(current_price, current_wealth)
 
-                # self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
-                # self.current_grid = get_grids(self.pa, self.pb, self.n_grid)
-                # self.quantity_on_one_grid = get_quantity_on_one_grid(
-                #     current_wealth, self.current_grid, current_price
-                # )
-
                 print(f"new quantity_on_one_grid: {self.quantity_on_one_grid}")
                 print(f"current_grid: {self.current_grid}")
 

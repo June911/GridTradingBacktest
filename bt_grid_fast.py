@@ -26,12 +26,6 @@ def get_grids(pa, pb, n_grid, tp="arth"):
     return grids
 
 
-# def get_quantity_on_one_grid(wealth, p0, r, tp="arth"):
-#     pa, pb = get_price_range(p0, r, tp=tp)
-#     grids = get_grids(pa, pb, n_grid, tp=tp)
-#     quantity_on_one_grid = wealth / (np.sum(grids) - p0)
-#     return quantity_on_one_grid
-
 # assuming the grids contains p0
 def get_quantity_on_one_grid(wealth, grids, p0):
     quantity_on_one_grid = wealth / (np.sum(grids) - p0)
@@ -48,6 +42,7 @@ class StaticGridBT:
         stock_prices,
         is_trading_even=False,
         is_reverse_trading=False,
+        is_infinite_grid=False,
         tx_m=0,
         tx_t=0.0002,
     ):
@@ -70,6 +65,11 @@ class StaticGridBT:
         # when the price exits the price range, we close our positions
         # this is the reverse of original grid trading strategy
         self.is_reverse_trading = is_reverse_trading
+
+        # if is is_infinite_grid,
+        #   1. when the price hits the price range, we do not close our positions
+        #   2. every time the price updates, we update our grid
+        self.is_infinite_grid = is_infinite_grid
 
         # transaction cost
         # [maker, taker, and difference]
@@ -133,6 +133,19 @@ class StaticGridBT:
 
         return transactions
 
+    def update_grids(self, current_price, current_wealth):
+        """update price grids
+
+        Args:
+            current_price (float): current_price
+            current_wealth (float): current_wealth
+        """
+        self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
+        self.current_grid = get_grids(self.pa, self.pb, self.n_grid, tp=self.tp)
+        self.quantity_on_one_grid = get_quantity_on_one_grid(
+            current_wealth, self.current_grid, current_price
+        )
+
     def on_bar(self, i):
         """handle position at every bar
 
@@ -170,6 +183,7 @@ class StaticGridBT:
         # calculate p&l from last step to this step
         # p&l = (current_price - last_price) * last_position
         #       + (current_price - avg_transactions_price) * transactions_volume
+        #       - transactions fees
         # current_wealth = w_t + p&l
         transactions_quantity = transactions_volume * self.quantity_on_one_grid
         current_wealth = (
@@ -179,34 +193,32 @@ class StaticGridBT:
             - avg_transactions_price * abs(transactions_quantity) * self.tx_m
         )
 
-        # update
+        if self.is_infinite_grid:
+            # only update grid
+            self.update_grids(current_price, current_wealth)
+        else:
+            ## if not infinite grid, we update grid only change when price outside [pa, pb]
+            if (current_price < self.pa) | (current_price > self.pb):
+                # close all positions
+                current_position = 0
+
+                # maker to taker
+                # add additional transactions cost
+                current_wealth = (
+                    current_wealth
+                    - avg_transactions_price * abs(transactions_quantity) * self.dif_tx
+                )
+
+                # update grid
+                self.update_grids(current_price, current_wealth)
+
+        # update relevant info
         if len(transactions) > 0:
             self.last_transactions = transactions
-        # self.last_transactions = transactions
         self.last_position = current_position
         self.positions.iloc[i] = current_position
         self.wealth.iloc[i] = current_wealth
         self.grids_all.iloc[i, :] = self.current_grid
-
-        # # update grid --> only change when price outside [pa, pb]
-        if (current_price < self.pa) | (current_price > self.pb):
-
-            # close all positions
-            self.positions.iloc[i] = 0
-
-            # maker to taker
-            # add additional transactions cost
-            self.wealth.iloc[i] = (
-                self.wealth.iloc[i]
-                - avg_transactions_price * abs(transactions_quantity) * self.dif_tx
-            )
-
-            # update grid
-            self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
-            self.current_grid = get_grids(self.pa, self.pb, self.n_grid)
-            self.quantity_on_one_grid = get_quantity_on_one_grid(
-                self.wealth.iloc[i], self.current_grid, current_price
-            )
 
     def run_on_bar(self):
         """run for all bars"""
@@ -236,17 +248,3 @@ class StaticGridBT:
         axs[2].grid(True)
 
         plt.savefig("results.png")
-
-
-static_grid_bt = StaticGridBT(
-    w0,
-    r,
-    n_grid,
-    tp,
-    data,
-    is_trading_even=False,
-    is_reverse_trading=False,
-    is_infinite_grid=True,
-    tx_m=0,
-    tx_t=0.0002,
-)
