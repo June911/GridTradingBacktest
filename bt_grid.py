@@ -48,6 +48,7 @@ class StaticGridBT:
         stock_prices,
         is_trading_even=False,
         is_reverse_trading=False,
+        is_infinite_grid=False,
         tx_m=0,
         tx_t=0.0002,
     ):
@@ -70,6 +71,11 @@ class StaticGridBT:
         # when the price exits the price range, we close our positions
         # this is the reverse of original grid trading strategy
         self.is_reverse_trading = is_reverse_trading
+
+        # if is is_infinite_grid,
+        #   1. when the price hits the price range, we do not close our positions
+        #   2. every time the price updates, we update our grid
+        self.is_infinite_grid = is_infinite_grid
 
         # transaction cost
         # [maker, taker, and difference]
@@ -136,6 +142,19 @@ class StaticGridBT:
 
         return transactions
 
+    def update_grids(self, current_price, current_wealth):
+        """update price grids
+
+        Args:
+            current_price (float): current_price
+            current_wealth (float): current_wealth
+        """
+        self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
+        self.current_grid = get_grids(self.pa, self.pb, self.n_grid, tp=self.tp)
+        self.quantity_on_one_grid = get_quantity_on_one_grid(
+            current_wealth, self.current_grid, current_price
+        )
+
     def on_bar(self, i):
         """handle position at every bar
 
@@ -183,6 +202,7 @@ class StaticGridBT:
         # calculate p&l from last step to this step
         # p&l = (current_price - last_price) * last_position
         #       + (current_price - avg_transactions_price) * transactions_volume
+        #       - transactions fees
         # current_wealth = w_t + p&l
         transactions_quantity = transactions_volume * self.quantity_on_one_grid
         current_wealth = (
@@ -198,43 +218,50 @@ class StaticGridBT:
             f"transactions cost: {avg_transactions_price * abs(transactions_quantity) * self.tx_m}"
         )
 
-        # update
+        if self.is_infinite_grid:
+            # only update grid
+            print(f"last quantity_on_one_grid: {self.quantity_on_one_grid}")
+            self.update_grids(current_price, current_wealth)
+            print(f"new quantity_on_one_grid: {self.quantity_on_one_grid}")
+            print(f"current_grid: {self.current_grid}")
+        else:
+            ## if not infinite grid, we update grid only change when price outside [pa, pb]
+            if (current_price < self.pa) | (current_price > self.pb):
+                print("！" * 3)
+                print("price out of grid range, need to update!")
+
+                # close all positions
+                current_position = 0
+
+                # maker to taker
+                # add additional transactions cost
+                print(f"current wealth: {current_wealth}")
+                current_wealth = (
+                    current_wealth
+                    - avg_transactions_price * abs(transactions_quantity) * self.dif_tx
+                )
+                print(f"new current wealth: {current_wealth}")
+
+                # update grid
+                print(f"last quantity_on_one_grid: {self.quantity_on_one_grid}")
+                self.update_grids(current_price, current_wealth)
+
+                # self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
+                # self.current_grid = get_grids(self.pa, self.pb, self.n_grid)
+                # self.quantity_on_one_grid = get_quantity_on_one_grid(
+                #     current_wealth, self.current_grid, current_price
+                # )
+
+                print(f"new quantity_on_one_grid: {self.quantity_on_one_grid}")
+                print(f"current_grid: {self.current_grid}")
+
+        # update relevant info
         if len(transactions) > 0:
             self.last_transactions = transactions
-        # self.last_transactions = transactions
         self.last_position = current_position
         self.positions.iloc[i] = current_position
         self.wealth.iloc[i] = current_wealth
         self.grids_all.iloc[i, :] = self.current_grid
-
-        # # update grid --> only change when price outside [pa, pb]
-        if (current_price < self.pa) | (current_price > self.pb):
-            print("！" * 3)
-            print("price out of grid range, need to update!")
-
-            # close all positions
-            self.positions.iloc[i] = 0
-
-            # maker to taker
-            # add additional transactions cost
-            print(f"current wealth: {self.wealth.iloc[i]}")
-            self.wealth.iloc[i] = (
-                self.wealth.iloc[i]
-                - avg_transactions_price * abs(transactions_quantity) * self.dif_tx
-            )
-            print(f"new current wealth: {self.wealth.iloc[i]}")
-
-            # update grid
-            print(f"last quantity_on_one_grid: {self.quantity_on_one_grid}")
-
-            self.pa, self.pb = get_price_range(current_price, self.r, tp=self.tp)
-            self.current_grid = get_grids(self.pa, self.pb, self.n_grid)
-            self.quantity_on_one_grid = get_quantity_on_one_grid(
-                current_wealth, self.current_grid, current_price
-            )
-
-            print(f"new quantity_on_one_grid: {self.quantity_on_one_grid}")
-            print(f"current_grid: {self.current_grid}")
 
     def run_on_bar(self):
         """run for all bars"""
