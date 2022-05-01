@@ -236,17 +236,3 @@ class StaticGridBT:
         axs[2].grid(True)
 
         plt.savefig("results.png")
-
-
-static_grid_bt = StaticGridBT(
-    w0,
-    r,
-    n_grid,
-    tp,
-    data,
-    is_trading_even=False,
-    is_reverse_trading=False,
-    is_infinite_grid=True,
-    tx_m=0,
-    tx_t=0.0002,
-)

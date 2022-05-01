@@ -1,6 +1,6 @@
 import tqdm
 import multiprocessing
-from bt_grid import *
+from bt_grid_fast import *
 from functions_processing_data import get_data
 from functions_performance import f_SharpeRatio
 from helpful_scripts import HiddenPrints, get_matrix
@@ -15,7 +15,7 @@ tp = "arth"
 lst_r = [0.001 * 2**i for i in range(10)]
 lst_n_grid = [5 * 2**i for i in range(5)]
 lst_tx = np.round(np.arange(1, 6, 2) * 0.0001, 4)
-file_name = "binance_futures_DOTUSDT_20200101_20220322.csv"
+file_name = "binance_futures_BTCUSDT_20200101_20220322.csv"
 df_data = get_data(file_name)
 df_data = df_data.loc[df_data.index > pd.to_datetime("2022/1/1"), :].iloc[:10000, :]
 
@@ -30,6 +30,7 @@ def f_objective(r, n_grid, tx_m):
         df_data.close,
         is_trading_even=False,
         is_reverse_trading=True,
+        is_infinite_grid=False,
         tx_m=tx_m,
         tx_t=tx_m + 0.0002,
     )
@@ -37,7 +38,24 @@ def f_objective(r, n_grid, tx_m):
     with HiddenPrints():
         bt.run_on_bar()
 
-    return f_SharpeRatio(bt.wealth, k=60 * 24 * 365)
+    final_wealth = bt.wealth.iloc[-1]
+    sharpe_ratio = final_wealth / bt.wealth.diff(1).std()
+    max_wealth_utilization = (
+        bt.positions.abs() * bt.stock_prices * bt.grid_quantity
+    ).max()
+    max_drawdown = bt.wealth.min() / max_wealth_utilization
+    calmar_ratio = final_wealth / abs(max_drawdown)
+
+    return np.round(
+        [
+            final_wealth,
+            sharpe_ratio,
+            max_drawdown,
+            max_wealth_utilization,
+            calmar_ratio,
+        ],
+        2,
+    )
 
 
 def params_optmization(lst_r, lst_n_grid, lst_tx):
@@ -55,7 +73,16 @@ def params_optmization(lst_r, lst_n_grid, lst_tx):
 
     # output
     df_performance = pd.DataFrame(lst_params, columns=["r", "n_grid", "tx_m"])
-    df_performance["SharpRatio"] = res
+    df_performance.loc[
+        :,
+        [
+            "final_wealth",
+            "sharpe_ratio",
+            "max_drawdown",
+            "max_wealth_utilization",
+            "calmar_ratio",
+        ],
+    ] = res
 
     return df_performance
 

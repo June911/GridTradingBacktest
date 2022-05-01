@@ -1,2 +1,4 @@
 data/
+results/
 test.py
+gt_reverse.ipynb

@@ -35,6 +35,7 @@ def get_data(file_name, from_database=False, from_params=False):
                 "Close": "close",
                 "Low": "low",
                 "Volume": "volume",
+                "price": "close",
             },
             inplace=True,
         )

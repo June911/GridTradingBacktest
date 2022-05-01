@@ -188,7 +188,11 @@ class StaticGridBT:
             reverse_direction = 1 if self.is_reverse_trading else -1
             # transactions_volume = len(transactions) * direction * (-1)
             transactions_volume = len(transactions) * direction * reverse_direction
-            avg_transactions_price = np.mean(transactions)
+            if self.is_reverse_trading:
+                # the trading price should be current price
+                avg_transactions_price = current_price
+            else:
+                avg_transactions_price = np.mean(transactions)
         else:
             transactions_volume, avg_transactions_price = 0, 0
 
